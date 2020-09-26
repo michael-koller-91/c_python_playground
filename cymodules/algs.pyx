@@ -8,6 +8,11 @@ cimport cython
 from libc.math cimport fabs
 
 
+cdef extern from 'complex.h' nogil:
+    float cabsf 'cabs' (float complex z)
+    double cabs 'cabs' (double complex z)
+
+
 ctypedef fused sdcz:
     float
     double
@@ -24,23 +29,25 @@ cpdef dtype_cy2np(dtype):
         return np.complex64
     elif dtype == 'double complex':
         return np.complex128
-    else:
-        return -1
 
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def omp(double[:, ::1] a, double[::1] b, int s):
+def omp(sdcz[:, ::1] a, sdcz[::1] b, int s):
+    # get numpy data type
+    dtype_np = dtype_cy2np(cython.typeof(a[0, 0]))
+
     # initialize result vectors
-    x = np.zeros(a.shape[1], dtype=dtype_cy2np(cython.typeof(a[0, 0])))
+    x = np.zeros(a.shape[1], dtype=dtype_np)
     S = np.zeros(a.shape[1], dtype=np.uint8)
 
     cdef:
         Py_ssize_t i
         int m, n, lda, ldb, incx, incy, argmaximum, nrhs, info, j, counter, lwork
-        double alpha, beta, maximum, get_lwork
-        double[::1] xv, workv, bcpy
-        double[::1, :] atmp, acpy
+        sdcz alpha, beta, get_lwork
+        sdcz[::1] xv, workv, bcpy
+        sdcz[::1, :] atmp, acpy
+        double maximum
         np.uint8_t[::1] Sv
     acpy = a.copy_fortran()
     bcpy = b.copy()
@@ -57,31 +64,67 @@ def omp(double[:, ::1] a, double[::1] b, int s):
     lwork = 1
 
     # request maximum needed size of work array
-    lapack.dgels('N', &m, &s, &nrhs, &atmp[0, 0], &lda, &b[0], &ldb, &get_lwork, &lwork, &info)
+    if sdcz == cython.float:
+        lapack.sgels('N', &m, &s, &nrhs, &atmp[0, 0], &lda, &b[0], &ldb, &get_lwork, &lwork, &info)
+    elif sdcz == cython.double:
+        lapack.dgels('N', &m, &s, &nrhs, &atmp[0, 0], &lda, &b[0], &ldb, &get_lwork, &lwork, &info)
+    elif sdcz == cython.floatcomplex:
+        lapack.cgels('N', &m, &s, &nrhs, &atmp[0, 0], &lda, &b[0], &ldb, &get_lwork, &lwork, &info)
+    elif sdcz == cython.doublecomplex:
+        lapack.zgels('N', &m, &s, &nrhs, &atmp[0, 0], &lda, &b[0], &ldb, &get_lwork, &lwork, &info)
     lwork = <int> get_lwork
-    workv = np.empty(lwork, dtype=np.float64)
+    workv = np.empty(lwork, dtype=dtype_np)
 
-    # since bcpy is overwritten by dgemv and dgels, the original vector needs to be restored via copying repeatedly
+    # since bcpy is overwritten by xgemv and xgels, the original vector needs to be restored via copying repeatedly
     for j in range(1, s+1):
         if j > 1:
             bcpy[:] = b
-        # bcpy <-- -acpy @ x + bcpy
-        alpha = -1.0
-        beta = 1.0
-        blas.dgemv('N', &m, &n, &alpha, &acpy[0, 0], &lda, &xv[0], &incx, &beta, &bcpy[0], &incy)
 
-        # x <-- acpy.T @ bcpy
-        alpha = 1.0
-        beta = 0.0
-        blas.dgemv('T', &m, &n, &alpha, &acpy[0, 0], &lda, &bcpy[0], &incx, &beta, &xv[0], &incy)
+        # compute a.conj().T @ (b - a @ x)
+        if sdcz == cython.float:
+            alpha = -1.0
+            beta = 1.0
+            # bcpy <-- -acpy @ x + bcpy
+            blas.sgemv('N', &m, &n, &alpha, &acpy[0, 0], &lda, &xv[0], &incx, &beta, &bcpy[0], &incy)
+            # x <-- acpy.T @ bcpy
+            alpha = 1.0
+            beta = 0.0
+            blas.sgemv('T', &m, &n, &alpha, &acpy[0, 0], &lda, &bcpy[0], &incx, &beta, &xv[0], &incy)
+        elif sdcz == cython.double:
+            alpha = -1.0
+            beta = 1.0
+            blas.dgemv('N', &m, &n, &alpha, &acpy[0, 0], &lda, &xv[0], &incx, &beta, &bcpy[0], &incy)
+            alpha = 1.0
+            beta = 0.0
+            blas.dgemv('T', &m, &n, &alpha, &acpy[0, 0], &lda, &bcpy[0], &incx, &beta, &xv[0], &incy)
+        elif sdcz == cython.floatcomplex:
+            alpha = -1.0
+            beta = 1.0
+            blas.cgemv('N', &m, &n, &alpha, &acpy[0, 0], &lda, &xv[0], &incx, &beta, &bcpy[0], &incy)
+            alpha = 1.0
+            beta = 0.0
+            blas.cgemv('C', &m, &n, &alpha, &acpy[0, 0], &lda, &bcpy[0], &incx, &beta, &xv[0], &incy)
+        elif sdcz == cython.doublecomplex:
+            alpha = -1.0
+            beta = 1.0
+            blas.zgemv('N', &m, &n, &alpha, &acpy[0, 0], &lda, &xv[0], &incx, &beta, &bcpy[0], &incy)
+            alpha = 1.0
+            beta = 0.0
+            blas.zgemv('C', &m, &n, &alpha, &acpy[0, 0], &lda, &bcpy[0], &incx, &beta, &xv[0], &incy)
 
-        # argmax(abs(x))
+        # find argmax of abs(x)
         maximum = 0.0
         argmaximum = 0
-        for i in range(xv.shape[0]):
-            if fabs(xv[i]) > maximum:
-                maximum = fabs(xv[i])
-                argmaximum = i
+        if sdcz == cython.float or sdcz == cython.double:
+            for i in range(xv.shape[0]):
+                if fabs(xv[i]) > maximum:
+                    maximum = fabs(xv[i])
+                    argmaximum = i
+        elif sdcz == cython.floatcomplex or sdcz == cython.doublecomplex:
+            for i in range(xv.shape[0]):
+                if cabs(xv[i]) > maximum:
+                    maximum = cabs(xv[i])
+                    argmaximum = i
         Sv[argmaximum] = 1
 
         # atmp consists of the columns i of acpy which correspond to S[i] == 1
@@ -92,7 +135,14 @@ def omp(double[:, ::1] a, double[::1] b, int s):
                 counter += 1
         # lstsq
         bcpy[:] = b
-        lapack.dgels('N', &m, &j, &nrhs, &atmp[0, 0], &lda, &bcpy[0], &ldb, &workv[0], &lwork, &info)
+        if sdcz == cython.float:
+            lapack.sgels('N', &m, &j, &nrhs, &atmp[0, 0], &lda, &bcpy[0], &ldb, &workv[0], &lwork, &info)
+        elif sdcz == cython.double:
+            lapack.dgels('N', &m, &j, &nrhs, &atmp[0, 0], &lda, &bcpy[0], &ldb, &workv[0], &lwork, &info)
+        elif sdcz == cython.floatcomplex:
+            lapack.cgels('N', &m, &j, &nrhs, &atmp[0, 0], &lda, &bcpy[0], &ldb, &workv[0], &lwork, &info)
+        elif sdcz == cython.doublecomplex:
+            lapack.zgels('N', &m, &j, &nrhs, &atmp[0, 0], &lda, &bcpy[0], &ldb, &workv[0], &lwork, &info)
 
         # extract lstsq solution
         xv[:] = 0.0
