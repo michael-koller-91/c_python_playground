@@ -37,7 +37,7 @@ for dtype in [np.float32, np.complex128]:
             x2 = algs.omp_jit(a, b, s)[0]
             x3 = calgs.omp(a, b, s)[0]
             if not np.allclose(x1, x2, atol=1e-6) or not np.allclose(x1, x3, atol=1e-6):
-                print('Algorithms did not compute same results')
+                print('Algorithms did not compute same results.')
 
             d['algs.omp'].append(np.mean(ut.exec_time_auto(algs.omp, 7, 0.2, a, b, s)))
             d['algs.omp_jit'].append(np.mean(ut.exec_time_auto(algs.omp_jit, 7, 0.2, a, b, s)))
@@ -64,7 +64,7 @@ for dtype in [np.float32, np.complex128]:
     x2 = algs.omp_jit(a, b, s)[0]
     x3 = calgs.omp(a, b, s)[0]
     if not np.allclose(x1, x2, atol=1e-6) or not np.allclose(x1, x3, atol=1e-6):
-        print('Algorithms did not compute same results')
+        print('Algorithms did not compute same results.')
 
     d['algs.omp'].append(np.mean(ut.exec_time_auto(algs.omp, 7, 0.2, a, b, s)))
     d['algs.omp_jit'].append(np.mean(ut.exec_time_auto(algs.omp_jit, 7, 0.2, a, b, s)))

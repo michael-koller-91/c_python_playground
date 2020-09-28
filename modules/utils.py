@@ -36,10 +36,10 @@ def exec_time_auto(func, repeat=7, maxtime=0.2, *args, **kwargs):
             break
 
     # the actual timing
-    secs = np.array(timeit.repeat(wrapped, repeat=repeat, number=number))
+    secs = np.array(timeit.repeat(wrapped, repeat=repeat, number=number)) / number
 
     # print results
-    nsecs = secs * 1e9 / number
+    nsecs = secs * 1e9
     s_mean = np.mean(nsecs)
     s_std = np.std(nsecs)
     secs_mean, unit_mean = nsecs_to_unit(s_mean)
@@ -48,7 +48,7 @@ def exec_time_auto(func, repeat=7, maxtime=0.2, *args, **kwargs):
         '{:5.1f} {} ± {:6.2f} {} per loop (mean ± std. dev. of {} runs, {} loops each) ({})'
         .format(secs_mean, unit_mean, secs_std, unit_std, repeat, number, func)
     )
-    return s_mean, s_std
+    return secs
 
 
 def nsecs_to_unit(nsecs):
