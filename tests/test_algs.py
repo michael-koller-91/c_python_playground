@@ -9,7 +9,7 @@ from modules import algs    # noqa: E402
 from cymodules import algs as calgs     # noqa: E402
 
 
-class TestOMP(unittest.TestCase):
+class TestOmp(unittest.TestCase):
     def test_omp(self):
         np.random.seed(123)
         for dtype in [np.float32, np.float64, np.complex64, np.complex128]:
@@ -24,3 +24,19 @@ class TestOMP(unittest.TestCase):
                     x_c = calgs.omp(a, b, s)[0]
                     np.testing.assert_allclose(x_jit, x, atol=1e-6)
                     np.testing.assert_allclose(x_c, x, atol=1e-6)
+
+
+class TestPowerIteration(unittest.TestCase):
+    def test_power_iteration(self):
+        np.random.seed(123)
+        for dtype in [np.float64, np.complex128]:
+            for m in [2, 4, 8, 16, 32]:
+                a = ut.randn((m, m), dtype)
+                a = a + a.conj().T
+                v_init = ut.randn((m,), dtype)
+
+                mu_power, v_power = algs.power_iteration(a, v_init, eps=1e-15, max_iterations=300)
+                mu, v = np.linalg.eigh(a)
+                idx = np.argmax(np.abs(mu))
+                np.testing.assert_allclose(mu_power, mu[idx], atol=1e-6)
+                np.testing.assert_allclose(np.abs(np.inner(v_power.conj(), v[:, idx])), 1.0)
