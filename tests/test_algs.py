@@ -35,8 +35,21 @@ class TestPowerIteration(unittest.TestCase):
                 a = a + a.conj().T
                 v_init = ut.randn((m,), dtype)
 
-                mu_power, v_power = algs.power_iteration(a, v_init, eps=1e-15, max_iterations=300)
+                max_iter = 1000
+                if m > 8:
+                    max_iter = 100000
+
+                mu_power, v_power = algs.power_iteration(a, v_init, eps=1e-15, max_iterations=max_iter)
+                mu_power_jit, v_power_jit = algs.power_iteration_jit(a, v_init, eps=1e-15, max_iterations=max_iter)
+                mu_power_c, v_power_c = calgs.power_iteration(a, v_init, eps=1e-15, max_iterations=max_iter)
+
                 mu, v = np.linalg.eigh(a)
                 idx = np.argmax(np.abs(mu))
+
                 np.testing.assert_allclose(mu_power, mu[idx], atol=1e-6)
+                np.testing.assert_allclose(mu_power_jit, mu[idx], atol=1e-6)
+                np.testing.assert_allclose(mu_power_c, mu[idx], atol=1e-6)
+
                 np.testing.assert_allclose(np.abs(np.inner(v_power.conj(), v[:, idx])), 1.0)
+                np.testing.assert_allclose(np.abs(np.inner(v_power_jit.conj(), v[:, idx])), 1.0)
+                np.testing.assert_allclose(np.abs(np.inner(v_power_c.conj(), v[:, idx])), 1.0)
