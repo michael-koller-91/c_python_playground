@@ -20,6 +20,11 @@ ctypedef fused sdcz:
     double complex
 
 
+ctypedef fused dz:
+    double
+    double complex
+
+
 cpdef dtype_cy2np(dtype):
     if dtype == 'float':
         return np.float32
@@ -34,6 +39,22 @@ cpdef dtype_cy2np(dtype):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 def omp(sdcz[:, ::1] a, sdcz[::1] b, int s):
+    r"""
+    Orthogonal Matching Pursuit, a greedy algorithm to solve
+        \min_x \| a x - b \|
+    for a s-sparse x.
+    Args:
+        a: An m-by-n matrix (typically m < n).
+        b: An m-dimensional right-hand side vector.
+        s: The sparsity (number of non-zero entires of x)
+
+    Returns:
+        x: A s-sparse n-dimensional vector which (is supposed to) solve(s) \min_x \| A x - y \|.
+        S: A n-dimensional boolean vector indicating the support of x.
+
+    Source:
+        See "A mathematical introduction to compressvie sensing" by Foucart, Section 3.23.
+    """
     # get numpy data type
     dtype_np = dtype_cy2np(cython.typeof(a[0, 0]))
 
@@ -153,3 +174,79 @@ def omp(sdcz[:, ::1] a, sdcz[::1] b, int s):
                 counter += 1
 
     return x, S
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+def power_iteration(dz[:, ::1] a, dz[::1] v_init, double eps, int max_iterations):
+    """
+    Find the largest (in absolute value) eigenvalue and corresponding
+    eigenvector of a square symmetric/self-adjoint matrix A using the
+    initialization vector v_init. The algorithm converges if the maximum number
+    of iterations, max_iterations, is reached or if the relative change of the
+    estimated eigenvalue from one iteration to the next is smaller than or
+    equal to eps.
+
+    Returns:
+        mu: The largest eigenvalue.
+        v: The corresponding n-dimensional eigenvector.
+    """
+    # square matrix
+    assert a.shape[0] == a.shape[1]
+    assert a.shape[0] == v_init.shape[0]
+
+    cdef:
+        dz[::1] Avv
+        dz[::1, :] acpy
+        Py_ssize_t i
+        int N, incx, incy
+        double norm_Av
+        dz alpha = 1.0
+        dz beta = 0.0
+        dz mu = 0.0
+        dz mu_previous = 0.0
+    N = a.shape[0]
+    incx = 1
+    incy = 1
+    Av = np.empty(a.shape[0], dtype=dtype_cy2np(cython.typeof(a[0, 0])))
+    Avv = Av
+    acpy = a.copy_fortran()
+
+    if dz == cython.double:
+        # Avv <-- a @ v_init
+        blas.dsymv('u', &N, &alpha, &acpy[0, 0], &N, &v_init[0], &incx, &beta, &Avv[0], &incy)
+        for _ in range(max_iterations):
+            # v_init <-- Avv / norm_Av
+            norm_Av = blas.dnrm2(&N, &Avv[0], &incx)
+            v_init = Avv.copy()
+            lapack.drscl(&N, &norm_Av, &v_init[0], &incx)
+            # Av <-- a @ v_init
+            blas.dsymv('u', &N, &alpha, &acpy[0, 0], &N, &v_init[0], &incx, &beta, &Avv[0], &incy)
+            # mu <-- v_init.T @ Av
+            mu = blas.ddot(&N, &v_init[0], &incx, &Avv[0], &incy)
+
+            if fabs((mu - mu_previous) / mu) <= eps:
+                break
+
+            mu_previous = mu
+        return mu, np.array(v_init)
+
+    elif dz == cython.doublecomplex:
+        # Avv <-- a @ v_init
+        blas.zhemv('u', &N, &alpha, &acpy[0, 0], &N, &v_init[0], &incx, &beta, &Avv[0], &incy)
+        for _ in range(max_iterations):
+            # v_init <-- Avv / norm_Av
+            norm_Av = blas.dznrm2(&N, &Avv[0], &incx)
+            v_init = Avv.copy()
+            lapack.zdrscl(&N, &norm_Av, &v_init[0], &incx)
+            # Av <-- a @ v_init
+            blas.zhemv('u', &N, &alpha, &acpy[0, 0], &N, &v_init[0], &incx, &beta, &Avv[0], &incy)
+            # mu <-- v_init.conj().T @ Av
+            mu = blas.zdotc(&N, &v_init[0], &incx, &Avv[0], &incy)
+
+            if cabs((mu - mu_previous) / mu) <= eps:
+                break
+
+            mu_previous = mu
+        return mu.real, np.array(v_init)
