@@ -199,7 +199,7 @@ def power_iteration(dz[:, ::1] a, dz[::1] v_init, double eps, int max_iterations
     cdef:
         dz[::1] Avv
         dz[::1, :] acpy
-        Py_ssize_t i
+        Py_ssize_t i, j
         int N, incx, incy
         double norm_Av
         dz alpha = 1.0
@@ -216,14 +216,14 @@ def power_iteration(dz[:, ::1] a, dz[::1] v_init, double eps, int max_iterations
     if dz == cython.double:
         # Avv <-- a @ v_init
         blas.dsymv('u', &N, &alpha, &acpy[0, 0], &N, &v_init[0], &incx, &beta, &Avv[0], &incy)
-        for _ in range(max_iterations):
+        for j in range(max_iterations):
             # v_init <-- Avv / norm_Av
             norm_Av = blas.dnrm2(&N, &Avv[0], &incx)
-            v_init = Avv.copy()
-            lapack.drscl(&N, &norm_Av, &v_init[0], &incx)
-            # Av <-- a @ v_init
+            for i in range(a.shape[0]):
+                v_init[i] = Avv[i] / norm_Av
+            # Avv <-- a @ v_init
             blas.dsymv('u', &N, &alpha, &acpy[0, 0], &N, &v_init[0], &incx, &beta, &Avv[0], &incy)
-            # mu <-- v_init.T @ Av
+            # mu <-- v_init.T @ Avv
             mu = blas.ddot(&N, &v_init[0], &incx, &Avv[0], &incy)
 
             if fabs((mu - mu_previous) / mu) <= eps:
@@ -235,14 +235,14 @@ def power_iteration(dz[:, ::1] a, dz[::1] v_init, double eps, int max_iterations
     elif dz == cython.doublecomplex:
         # Avv <-- a @ v_init
         blas.zhemv('u', &N, &alpha, &acpy[0, 0], &N, &v_init[0], &incx, &beta, &Avv[0], &incy)
-        for _ in range(max_iterations):
+        for j in range(max_iterations):
             # v_init <-- Avv / norm_Av
             norm_Av = blas.dznrm2(&N, &Avv[0], &incx)
-            v_init = Avv.copy()
-            lapack.zdrscl(&N, &norm_Av, &v_init[0], &incx)
-            # Av <-- a @ v_init
+            for i in range(a.shape[0]):
+                v_init[i] = Avv[i] / norm_Av
+            # Avv <-- a @ v_init
             blas.zhemv('u', &N, &alpha, &acpy[0, 0], &N, &v_init[0], &incx, &beta, &Avv[0], &incy)
-            # mu <-- v_init.conj().T @ Av
+            # mu <-- v_init.conj().T @ Avv
             mu = blas.zdotc(&N, &v_init[0], &incx, &Avv[0], &incy)
 
             if cabs((mu - mu_previous) / mu) <= eps:

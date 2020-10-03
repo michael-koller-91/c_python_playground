@@ -67,6 +67,9 @@ def power_iteration(A, v_init, eps=1e-12, max_iterations=100):
     Returns:
         mu: The largest eigenvalue.
         v: The corresponding n-dimensional eigenvector.
+
+    Source:
+        https://github.com/TheAlgorithms/Python/blob/master/linear_algebra/src/power_iteration.py
     """
     # square matrix
     assert A.shape[0] == A.shape[1]
@@ -115,6 +118,7 @@ def power_iteration_jit(A, v_init, eps=1e-12, max_iterations=100):
 
     mu = 0.0
     mu_previous = 0.0
+    # only compute A @ v_init once per loop
     Av = A @ v_init
     for _ in range(max_iterations):
         v_init = Av / np.linalg.norm(Av)
