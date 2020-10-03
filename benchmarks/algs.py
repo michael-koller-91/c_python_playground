@@ -82,3 +82,58 @@ for dtype in [np.float32, np.complex128]:
 df = pd.DataFrame(d)
 print(df)
 print(df.describe())
+
+#
+# power iteration
+#
+d = {
+    'dtype': list(),
+    'n': list(),
+    'algs.power_iteration': list(),
+    'algs.power_iteration_jit': list(),
+    'calgs.power_iteration': list(),
+    'algs./algs.jit': list(),
+    'algs./calgs.': list(),
+    'algs.jit/calgs.': list(),
+}
+
+for dtype in [np.float64, np.complex128]:
+    for n in [2**x for x in range(1, 9)]:
+        print('dtype:', dtype, '| n:', n)
+        a = ut.randn((n, n), dtype=dtype)
+        v_init = ut.randn((n,), dtype=dtype)
+
+        mu_power1, v_power1 = algs.power_iteration(a, v_init, eps=1e-15, max_iterations=500)
+        mu_power2, v_power2 = algs.power_iteration_jit(a, v_init, eps=1e-15, max_iterations=500)
+        mu_power3, v_power3 = calgs.power_iteration(a, v_init, eps=1e-15, max_iterations=500)
+
+        if not (np.allclose(mu_power1, mu_power2, atol=1e-6) or
+            np.allclose(mu_power1, mu_power3, atol=1e-6)):
+            print('Algorithms did not compute same results.')
+
+        if not (np.allclose(np.abs(np.inner(v_power1.conj(), v_power2)), 1.0) or
+            np.allclose(np.abs(np.inner(v_power1.conj(), v_power3)), 1.0)):
+            print('Algorithms did not compute same results.')
+
+        d['algs.power_iteration'].append(
+            np.mean(ut.exec_time_auto(algs.power_iteration, 7, 0.2, a, v_init, 1e-15, 500)))
+        d['algs.power_iteration_jit'].append(
+            np.mean(ut.exec_time_auto(algs.power_iteration_jit, 7, 0.2, a, v_init, 1e-15, 500)))
+        d['calgs.power_iteration'].append(
+            np.mean(ut.exec_time_auto(calgs.power_iteration, 7, 0.2, a, v_init, 1e-15, 500)))
+        d['algs./algs.jit'].append(
+            d['algs.power_iteration'][-1]/d['algs.power_iteration_jit'][-1])
+        d['algs./calgs.'].append(
+            d['algs.power_iteration'][-1]/d['calgs.power_iteration'][-1])
+        d['algs.jit/calgs.'].append(
+            d['algs.power_iteration_jit'][-1]/d['calgs.power_iteration'][-1])
+
+        if dtype == np.float64:
+            d['dtype'].append('d')
+        elif dtype == np.complex128:
+            d['dtype'].append('z')
+        d['n'].append(n)
+
+df = pd.DataFrame(d)
+print(df)
+print(df.describe())
